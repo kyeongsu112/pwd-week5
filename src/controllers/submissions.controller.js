@@ -1,5 +1,5 @@
-// src/controllers/submissions.controller.js
 const submissionsService = require('../services/submissions.service');
+const restaurantService = require('../services/restaurants.service');
 const asyncHandler = require('../utils/asyncHandler');
 
 const normaliseMenu = (menu) => {
@@ -52,19 +52,51 @@ exports.update = asyncHandler(async (req, res) => {
     category: req.body.category,
     location: req.body.location,
     priceRange: req.body.priceRange,
-    recommendedMenu: Array.isArray(req.body.recommendedMenu) ? req.body.recommendedMenu : undefined,
     review: req.body.review,
     submitterName: req.body.submitterName,
     submitterEmail: req.body.submitterEmail,
     status: req.body.status,
   };
+
+  if (Array.isArray(req.body.recommendedMenu)) {
+    payload.recommendedMenu = req.body.recommendedMenu;
+  }
+
+  // undefined 제거
+  Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+
   const updated = await submissionsService.updateSubmission(req.params.id, payload);
-  if (!updated) return res.status(404).json({ error: { message: 'Submission not found' } });
+
+  if (!updated) {
+    return res.status(404).json({ error: { message: 'Submission not found' } });
+  }
+
+  // ✅ 승인 → 레스토랑 추가
+  if (payload.status === 'approved') {
+    await restaurantService.createRestaurant({
+      name: updated.restaurantName,
+      category: updated.category,
+      location: updated.location,
+      priceRange: updated.priceRange || '정보 없음',
+      description: updated.review || '',
+      recommendedMenu: updated.recommendedMenu || [],
+    });
+  }
+
+  // ✅ 거절 → 기존 레스토랑 삭제
+  if (payload.status === 'rejected') {
+    await restaurantService.deleteRestaurantByName(updated.restaurantName);
+  }
+
   res.json({ data: updated });
 });
 
 exports.remove = asyncHandler(async (req, res) => {
   const deleted = await submissionsService.deleteSubmission(req.params.id);
   if (!deleted) return res.status(404).json({ error: { message: 'Submission not found' } });
-  res.status(204).send();
+
+  // 삭제 시 레스토랑도 같이 삭제
+  await restaurantService.deleteRestaurantByName(deleted.restaurantName);
+
+  res.json({ data: deleted });
 });
