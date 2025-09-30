@@ -63,11 +63,15 @@ exports.update = asyncHandler(async (req, res) => {
     status: req.body.status,
   };
 
-  const updated = await submissionsService.updateSubmission(req.params.id, payload);
+  // 🔹 먼저 상태 업데이트
+  await submissionsService.updateSubmission(req.params.id, payload);
+
+  // 🔹 DB에서 최신 값 다시 가져오기
+  const updated = await submissionsService.getSubmissionById(req.params.id);
   if (!updated) return res.status(404).json({ error: { message: 'Submission not found' } });
 
   // ✅ 승인된 경우 restaurants에 추가 (submissions은 그대로 유지)
-  if (req.body.status === 'approved') {
+  if (updated.status === 'approved') {
     const restaurantPayload = {
       name: updated.restaurantName,
       category: updated.category,
