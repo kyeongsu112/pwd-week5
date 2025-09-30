@@ -1,6 +1,6 @@
 const submissionsService = require('../services/submissions.service');
-const asyncHandler = require('../utils/asyncHandler');
 const restaurantService = require('../services/restaurants.service');
+const asyncHandler = require('../utils/asyncHandler');
 
 const normaliseMenu = (menu) => {
   if (!menu) return [];
@@ -11,17 +11,20 @@ const normaliseMenu = (menu) => {
   return [];
 };
 
+// 제보 목록 조회
 exports.list = asyncHandler(async (req, res) => {
   const items = await submissionsService.listSubmissions(req.query.status);
   res.json({ data: items });
 });
 
+// 특정 제보 조회
 exports.get = asyncHandler(async (req, res) => {
   const item = await submissionsService.getSubmissionById(req.params.id);
   if (!item) return res.status(404).json({ error: { message: 'Submission not found' } });
   res.json({ data: item });
 });
 
+// 제보 생성
 exports.create = asyncHandler(async (req, res) => {
   const payload = {
     restaurantName: req.body.restaurantName,
@@ -46,16 +49,26 @@ exports.create = asyncHandler(async (req, res) => {
   res.status(201).json({ data: created });
 });
 
+// 제보 업데이트 (승인/거절 포함)
 exports.update = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  const submissionId = req.params.id;
+  const payload = {
+    restaurantName: req.body.restaurantName,
+    category: req.body.category,
+    location: req.body.location,
+    priceRange: req.body.priceRange,
+    recommendedMenu: Array.isArray(req.body.recommendedMenu) ? req.body.recommendedMenu : undefined,
+    review: req.body.review,
+    submitterName: req.body.submitterName,
+    submitterEmail: req.body.submitterEmail,
+    status: req.body.status,
+  };
 
-  const updated = await submissionsService.updateSubmission(submissionId, req.body);
+  const updated = await submissionsService.updateSubmission(req.params.id, payload);
   if (!updated) return res.status(404).json({ error: { message: 'Submission not found' } });
 
-  // ✅ 승인 시 자동으로 restaurants에 추가하고 submissions에서 삭제
-  if (status === 'approved') {
-    const payload = {
+  // ✅ 승인된 경우 restaurants에 추가 (submissions은 그대로 유지)
+  if (req.body.status === 'approved') {
+    const restaurantPayload = {
       name: updated.restaurantName,
       category: updated.category,
       location: updated.location,
@@ -63,13 +76,13 @@ exports.update = asyncHandler(async (req, res) => {
       description: updated.review || '',
       recommendedMenu: updated.recommendedMenu || [],
     };
-    await restaurantService.createRestaurant(payload);
-    await submissionsService.deleteSubmission(submissionId);
+    await restaurantService.createRestaurant(restaurantPayload);
   }
 
   res.json({ data: updated });
 });
 
+// 제보 삭제
 exports.remove = asyncHandler(async (req, res) => {
   const deleted = await submissionsService.deleteSubmission(req.params.id);
   if (!deleted) return res.status(404).json({ error: { message: 'Submission not found' } });
