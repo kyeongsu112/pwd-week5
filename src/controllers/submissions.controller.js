@@ -62,18 +62,16 @@ exports.update = asyncHandler(async (req, res) => {
     payload.recommendedMenu = req.body.recommendedMenu;
   }
 
-  // undefined 제거
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
   const updated = await submissionsService.updateSubmission(req.params.id, payload);
-
   if (!updated) {
     return res.status(404).json({ error: { message: 'Submission not found' } });
   }
 
-  // ✅ 승인 → 레스토랑 추가
+  // 승인 시 레스토랑 생성 + restaurantId 저장
   if (payload.status === 'approved') {
-    await restaurantService.createRestaurant({
+    const restaurant = await restaurantService.createRestaurant({
       name: updated.restaurantName,
       category: updated.category,
       location: updated.location,
@@ -81,11 +79,15 @@ exports.update = asyncHandler(async (req, res) => {
       description: updated.review || '',
       recommendedMenu: updated.recommendedMenu || [],
     });
+
+    updated.restaurantId = restaurant.id;
+    await submissionsService.updateSubmission(updated.id, { restaurantId: restaurant.id });
   }
 
-  // ✅ 거절 → 기존 레스토랑 삭제
-  if (payload.status === 'rejected') {
-    await restaurantService.deleteRestaurantByName(updated.restaurantName);
+  // 거절 시 기존 레스토랑 삭제
+  if (payload.status === 'rejected' && updated.restaurantId) {
+    await restaurantService.deleteRestaurant(updated.restaurantId);
+    await submissionsService.updateSubmission(updated.id, { restaurantId: null });
   }
 
   res.json({ data: updated });
@@ -95,8 +97,9 @@ exports.remove = asyncHandler(async (req, res) => {
   const deleted = await submissionsService.deleteSubmission(req.params.id);
   if (!deleted) return res.status(404).json({ error: { message: 'Submission not found' } });
 
-  // 삭제 시 레스토랑도 같이 삭제
-  await restaurantService.deleteRestaurantByName(deleted.restaurantName);
+  if (deleted.restaurantId) {
+    await restaurantService.deleteRestaurant(deleted.restaurantId);
+  }
 
   res.json({ data: deleted });
 });

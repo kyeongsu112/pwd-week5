@@ -1,9 +1,9 @@
-// src/models/submission.model.js
 const mongoose = require('mongoose');
 
 const SubmissionSchema = new mongoose.Schema(
   {
     id: { type: Number, required: true, unique: true, index: true },
+    restaurantId: { type: Number, default: null }, // ✅ 추가
     restaurantName: { type: String, required: true, index: true },
     category: { type: String, required: true, index: true },
     location: { type: String, required: true },
