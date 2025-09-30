@@ -1,4 +1,3 @@
-// src/app.js
 const express = require('express');
 const cors = require('cors');
 const restaurantsRouter = require('./routes/restaurants.routes');
@@ -10,7 +9,25 @@ const mongoose = require('mongoose');
 function createApp() {
   const app = express();
 
-  app.use(cors());
+  // ✅ Netlify 배포 도메인을 허용
+  const allowedOrigins = [
+    'http://localhost:5173',             // 개발용 Vite
+    'https://pwd-week3-kyeongsu.netlify.app', // Netlify 프론트
+  ];
+
+  app.use(
+    cors({
+      origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      credentials: true, // 필요시 쿠키 포함 허용
+    })
+  );
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
