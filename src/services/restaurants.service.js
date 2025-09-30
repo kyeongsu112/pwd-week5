@@ -1,36 +1,82 @@
-// src/services/restaurants.service.js
+const path = require('path');
+const { readFile } = require('fs/promises');
+const { readFileSync } = require('fs');
 const Restaurant = require('../models/restaurant.model');
 
+const DATA_PATH = path.join(__dirname, '..', 'data', 'restaurants.json');
+let restaurantCache = loadRestaurantsSync();
+
+function loadRestaurantsSync() {
+  const raw = readFileSync(DATA_PATH, 'utf8');
+  const parsed = JSON.parse(raw);
+  return parsed.map((item) => new Restaurant(item));
+}
+
+async function loadRestaurantsAsync() {
+  const raw = await readFile(DATA_PATH, 'utf8');
+  const parsed = JSON.parse(raw);
+  return parsed.map((item) => new Restaurant(item));
+}
+
+async function ensureCache() {
+  if (!restaurantCache || restaurantCache.length === 0) {
+    restaurantCache = await loadRestaurantsAsync();
+  }
+  return restaurantCache;
+}
+
+function nextRestaurantId() {
+  return restaurantCache.reduce((max, restaurant) => Math.max(max, restaurant.id), 0) + 1;
+}
+
+function cloneCollection(collection) {
+  return collection.map((restaurant) => new Restaurant(restaurant));
+}
+
+async function simulateLatency(delayInMs = 20) {
+  return new Promise((resolve) => setTimeout(resolve, delayInMs));
+}
+
 async function getAllRestaurants() {
-  return await Restaurant.find().sort({ createdAt: -1 }).lean();
+  await ensureCache();
+  await simulateLatency();
+  return cloneCollection(restaurantCache);
+}
+
+function getAllRestaurantsSync() {
+  if (!restaurantCache || restaurantCache.length === 0) {
+    restaurantCache = loadRestaurantsSync();
+  }
+  return cloneCollection(restaurantCache);
 }
 
 async function getRestaurantById(id) {
+  await ensureCache();
+  await simulateLatency();
   const numericId = Number(id);
-  return await Restaurant.findOne({ id: numericId }).lean();
+  return restaurantCache.find((restaurant) => restaurant.id === numericId) || null;
 }
 
 async function getPopularRestaurants(limit = 5) {
-  return await Restaurant.find().sort({ rating: -1 }).limit(limit).lean();
-}
-
-async function getNextRestaurantId() {
-  const max = await Restaurant.findOne().sort('-id').select('id').lean();
-  return (max?.id || 0) + 1;
+  const restaurants = await getAllRestaurants();
+  return restaurants.sort((a, b) => b.rating - a.rating).slice(0, limit);
 }
 
 async function createRestaurant(payload) {
+  await ensureCache();
+  await simulateLatency();
+
   const requiredFields = ['name', 'category', 'location'];
-  const missing = requiredFields.find((f) => !payload[f]);
-  if (missing) {
-    const err = new Error(`'${missing}' is required`);
-    err.statusCode = 400;
-    throw err;
+  const missingField = requiredFields.find((field) => !payload[field]);
+
+  if (missingField) {
+    const error = new Error(`'${missingField}' is required`);
+    error.statusCode = 400;
+    throw error;
   }
 
-  const nextId = await getNextRestaurantId();
-  const doc = await Restaurant.create({
-    id: nextId,
+  const restaurant = new Restaurant({
+    id: nextRestaurantId(),
     name: payload.name,
     category: payload.category,
     location: payload.location,
@@ -42,28 +88,32 @@ async function createRestaurant(payload) {
     image: payload.image ?? ''
   });
 
-  return doc.toObject();
+  restaurantCache = [...restaurantCache, restaurant];
+  return new Restaurant(restaurant);
 }
 
-async function updateRestaurant(id, payload) {
-  const numericId = Number(id);
-  return await Restaurant.findOneAndUpdate(
-    { id: numericId },
-    { $set: payload },
-    { new: true, runValidators: true, lean: true }
-  );
+async function deleteRestaurantById(id) {
+  await ensureCache();
+  const idx = restaurantCache.findIndex((r) => r.id === Number(id));
+  if (idx === -1) return null;
+
+  const deleted = restaurantCache[idx];
+  restaurantCache.splice(idx, 1);
+  return deleted;
 }
 
-async function deleteRestaurant(id) {
-  const numericId = Number(id);
-  return await Restaurant.findOneAndDelete({ id: numericId }).lean();
+function resetStore() {
+  restaurantCache = loadRestaurantsSync();
 }
 
 module.exports = {
   getAllRestaurants,
+  getAllRestaurantsSync,
   getRestaurantById,
   getPopularRestaurants,
   createRestaurant,
-  updateRestaurant,
-  deleteRestaurant,
+  deleteRestaurantById, // ✅ id 기반 삭제
+  resetStore,
+  loadRestaurantsSync,
+  loadRestaurantsAsync,
 };

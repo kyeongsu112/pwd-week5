@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const SubmissionSchema = new mongoose.Schema(
   {
     id: { type: Number, required: true, unique: true, index: true },
-    restaurantId: { type: Number, default: null }, // ✅ 추가
     restaurantName: { type: String, required: true, index: true },
     category: { type: String, required: true, index: true },
     location: { type: String, required: true },
@@ -12,7 +11,8 @@ const SubmissionSchema = new mongoose.Schema(
     review: { type: String, default: '' },
     submitterName: { type: String, default: '' },
     submitterEmail: { type: String, default: '' },
-    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending', index: true }
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending', index: true },
+    restaurantId: { type: Number, default: null } // 🔽 승인 시 생성된 restaurant의 id 저장
   },
   {
     timestamps: true,
